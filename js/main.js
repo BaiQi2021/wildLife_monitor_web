@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 初始化图表
     initChart();
 
-    // 初始化历史数据图表
+    // 初始化历史数据图表（自动显示历史数据）
     initHistoryChart();
 
     // 加载模型
@@ -58,10 +58,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     uploadAudioBtn.addEventListener('click', uploadAndAnalyzeAudio);
 
     // 历史数据按钮事件监听器
-    const viewHistoryBtn = document.getElementById('viewHistoryBtn');
     const resetHistoryBtn = document.getElementById('resetHistoryBtn');
 
-    viewHistoryBtn.addEventListener('click', showHistoryData);
     resetHistoryBtn.addEventListener('click', resetHistoryData);
 
     // 窗口调整大小时更新可视化器
@@ -633,13 +631,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateHistoryChart();
     }
 
-    /**
-     * 显示历史数据
-     */
-    function showHistoryData() {
-        // 更新历史图表
-        updateHistoryChart();
-    }
+
 
     /**
      * 重置历史数据
