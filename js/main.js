@@ -25,13 +25,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     let selectedFile = null;
     let recognitionCount = 0;
     let monitoringInterval = null;
-    let chart = null; // 图表实例
+    let chart = null; // 当前会话图表实例
+    let historyChart = null; // 历史数据图表实例
 
     // 初始化音频处理器
     await audioProcessor.initialize();
 
     // 初始化图表
     initChart();
+
+    // 初始化历史数据图表
+    initHistoryChart();
 
     // 加载模型
     try {
@@ -52,6 +56,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     stopMonitoringBtn.addEventListener('click', stopMonitoring);
     audioFileInput.addEventListener('change', handleFileSelect);
     uploadAudioBtn.addEventListener('click', uploadAndAnalyzeAudio);
+
+    // 历史数据按钮事件监听器
+    const viewHistoryBtn = document.getElementById('viewHistoryBtn');
+    const resetHistoryBtn = document.getElementById('resetHistoryBtn');
+
+    viewHistoryBtn.addEventListener('click', showHistoryData);
+    resetHistoryBtn.addEventListener('click', resetHistoryData);
 
     // 窗口调整大小时更新可视化器
     window.addEventListener('resize', () => {
@@ -425,10 +436,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const waveformCtx = waveformCanvas.getContext('2d');
             waveformCtx.clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
 
-            const spectrogramCanvas = document.getElementById('spectrogramCanvas');
-            const spectrogramCtx = spectrogramCanvas.getContext('2d');
-            spectrogramCtx.clearRect(0, 0, spectrogramCanvas.width, spectrogramCanvas.height);
-
             // 显示加载指示器
             waveformCtx.fillStyle = '#f9f9f9';
             waveformCtx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
@@ -437,29 +444,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             waveformCtx.font = '12px Arial';
             waveformCtx.fillText('正在生成波形图...', waveformCanvas.width / 2, waveformCanvas.height / 2);
 
-            spectrogramCtx.fillStyle = '#f9f9f9';
-            spectrogramCtx.fillRect(0, 0, spectrogramCanvas.width, spectrogramCanvas.height);
-            spectrogramCtx.fillStyle = '#666';
-            spectrogramCtx.textAlign = 'center';
-            spectrogramCtx.font = '12px Arial';
-            spectrogramCtx.fillText('正在生成频谱图...', spectrogramCanvas.width / 2, spectrogramCanvas.height / 2);
-
             try {
-                // 加载音频数据并生成波形和频谱图
+                // 加载音频数据并生成波形图
                 const audioProcessor = new AudioProcessor(null);
                 await audioProcessor.initialize();
                 const audioBuffer = await audioProcessor.loadAudioFile(audioBlob);
 
                 // 使用setTimeout让UI有时间更新
-                setTimeout(async () => {
+                setTimeout(() => {
                     try {
                         // 生成波形图
                         generateWaveform(audioBuffer);
-
-                        // 生成频谱图 (异步)
-                        await generateSpectrogram(audioBuffer);
                     } catch (err) {
-                        console.error('可视化生成失败:', err);
+                        console.error('波形图生成失败:', err);
                     }
                 }, 50);
             } catch (error) {
@@ -470,11 +467,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 waveformCtx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
                 waveformCtx.fillStyle = '#d9534f';
                 waveformCtx.fillText('波形图生成失败', waveformCanvas.width / 2, waveformCanvas.height / 2);
-
-                spectrogramCtx.fillStyle = '#f9f9f9';
-                spectrogramCtx.fillRect(0, 0, spectrogramCanvas.width, spectrogramCanvas.height);
-                spectrogramCtx.fillStyle = '#d9534f';
-                spectrogramCtx.fillText('频谱图生成失败', spectrogramCanvas.width / 2, spectrogramCanvas.height / 2);
             }
         }
     }
@@ -591,182 +583,101 @@ document.addEventListener('DOMContentLoaded', async () => {
         ctx.stroke();
     }
 
+
+
     /**
-     * 生成频谱图
-     * @param {AudioBuffer} audioBuffer - 音频缓冲区
+     * 初始化历史数据图表
      */
-    async function generateSpectrogram(audioBuffer) {
-        const canvas = document.getElementById('spectrogramCanvas');
-        const ctx = canvas.getContext('2d');
+    function initHistoryChart() {
+        const ctx = document.getElementById('historyChart').getContext('2d');
 
-        // 设置画布尺寸
-        const container = canvas.parentElement;
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
-
-        // 清除画布
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // 添加边距
-        const padding = 2;
-        const drawWidth = canvas.width - (padding * 2);
-        const drawHeight = canvas.height - (padding * 2);
-
-        try {
-            // 创建离线音频上下文
-            const offlineCtx = new OfflineAudioContext({
-                numberOfChannels: 1,
-                length: audioBuffer.length,
-                sampleRate: audioBuffer.sampleRate
-            });
-
-            // 创建分析器
-            const analyser = offlineCtx.createAnalyser();
-            analyser.fftSize = 2048; // 更大的FFT大小，获取更精确的频域数据
-            analyser.smoothingTimeConstant = 0.8; // 平滑处理
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Uint8Array(bufferLength);
-
-            // 创建音频源
-            const source = offlineCtx.createBufferSource();
-            source.buffer = audioBuffer;
-
-            // 连接节点
-            source.connect(analyser);
-            analyser.connect(offlineCtx.destination);
-
-            // 开始处理
-            source.start(0);
-
-            // 渲染音频
-            await offlineCtx.startRendering();
-
-            // 获取频域数据
-            analyser.getByteFrequencyData(dataArray);
-
-            // 创建渐变色
-            const gradient = ctx.createLinearGradient(0, 0, 0, drawHeight);
-            gradient.addColorStop(0, '#2c7a56');
-            gradient.addColorStop(0.5, '#4caf50');
-            gradient.addColorStop(1, '#8bc34a');
-
-            // 计算柱状图宽度 - 确保所有频段都能显示
-            // 使用对数刻度来显示频率，这样低频部分会更加详细
-            const visibleFreqBins = Math.min(bufferLength, 512); // 限制显示的频段数量
-
-            // 找出最大值用于归一化
-            let maxValue = 1;
-            for (let i = 0; i < visibleFreqBins; i++) {
-                if (dataArray[i] > maxValue) {
-                    maxValue = dataArray[i];
+        // 创建饼图
+        historyChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: [
+                        '#ff7675', '#74b9ff', '#55efc4', '#fdcb6e',
+                        '#a29bfe', '#fab1a0', '#81ecec', '#ffeaa7',
+                        '#dfe6e9', '#00b894', '#0984e3', '#6c5ce7'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            font: {
+                                size: 12
+                            }
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: '历史识别统计',
+                        font: {
+                            size: 16
+                        }
+                    }
                 }
             }
+        });
 
-            // 如果最大值太小，设置一个最小值
-            maxValue = Math.max(maxValue, 50);
+        // 初始加载历史数据
+        updateHistoryChart();
+    }
 
-            // 使用对数刻度计算频率索引
-            const logScale = (i) => {
-                // 将线性索引转换为对数索引，使低频部分更加详细
-                const minFreq = 1;
-                const maxFreq = visibleFreqBins;
-                const minLog = Math.log(minFreq);
-                const maxLog = Math.log(maxFreq);
-                const scale = (Math.log(i + minFreq) - minLog) / (maxLog - minLog);
-                return Math.floor(scale * visibleFreqBins);
-            };
+    /**
+     * 显示历史数据
+     */
+    function showHistoryData() {
+        // 更新历史图表
+        updateHistoryChart();
+    }
 
-            // 创建平滑的频谱数据
-            const smoothedData = new Array(drawWidth).fill(0);
-            const barWidth = 1; // 每个柱子宽度为1像素
+    /**
+     * 重置历史数据
+     */
+    function resetHistoryData() {
+        if (confirm('确定要重置所有历史数据吗？此操作不可撤销。')) {
+            // 重置历史数据
+            const resetData = modelLoader.resetHistoricalStatistics();
 
-            // 使用对数刻度映射频率到像素位置
-            for (let i = 0; i < drawWidth; i++) {
-                // 计算当前像素对应的频率索引
-                const freqIndex = Math.floor((i / drawWidth) * visibleFreqBins);
+            // 更新历史图表
+            historyChart.data.labels = resetData.labels;
+            historyChart.data.datasets[0].data = resetData.data;
+            historyChart.update();
 
-                // 使用对数刻度获取更好的频率分布
-                const logIndex = logScale(freqIndex);
-                const value = dataArray[logIndex];
-
-                // 应用平滑处理
-                if (i > 0) {
-                    smoothedData[i] = smoothedData[i-1] * 0.2 + value * 0.8;
-                } else {
-                    smoothedData[i] = value;
-                }
-            }
-
-            // 绘制频谱柱状图
-            for (let i = 0; i < drawWidth; i++) {
-                const value = smoothedData[i];
-                const barHeight = (value / maxValue) * drawHeight;
-
-                const x = i + padding;
-                const y = canvas.height - padding - barHeight;
-
-                // 使用渐变色，根据频率高低变化颜色
-                const colorPosition = i / drawWidth;
-                const hue = 120 - (colorPosition * 50); // 从绿色到黄绿色
-
-                // 绘制柱状图
-                ctx.fillStyle = gradient;
-                ctx.fillRect(x, y, barWidth, barHeight);
-            }
-
-            // 绘制频率刻度
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.font = '8px Arial';
-            ctx.textAlign = 'center';
-
-            // 只绘制几个主要频率刻度
-            const sampleRate = audioBuffer.sampleRate;
-            const nyquistFreq = sampleRate / 2; // 奈奎斯特频率
-            const frequencies = [100, 250, 500, 1000, 2000, 5000, 10000];
-
-            // 使用对数刻度计算频率位置
-            const freqToX = (freq) => {
-                // 将频率转换为对数位置
-                const minFreq = 20; // 人耳可听最低频率
-                const maxFreq = nyquistFreq;
-                const minLog = Math.log(minFreq);
-                const maxLog = Math.log(maxFreq);
-
-                // 计算对数位置
-                const logPos = (Math.log(freq) - minLog) / (maxLog - minLog);
-
-                // 转换为画布坐标
-                return Math.round(padding + logPos * drawWidth);
-            };
-
-            // 绘制刻度
-            for (const freq of frequencies) {
-                if (freq <= nyquistFreq) { // 不超过奈奎斯特频率
-                    const x = freqToX(freq);
-
-                    // 绘制刻度线
-                    ctx.fillRect(x, canvas.height - padding, 1, -5);
-
-                    // 绘制频率标签
-                    let label = freq >= 1000 ? `${(freq/1000).toFixed(freq >= 10000 ? 0 : 1)}k` : `${freq}`;
-                    ctx.fillText(label, x, canvas.height - 5);
-                }
-            }
-
-        } catch (error) {
-            console.error('频谱图生成失败:', error);
-
-            // 显示错误信息
-            ctx.fillStyle = '#f44336';
-            ctx.font = '12px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('频谱图生成失败', canvas.width / 2, canvas.height / 2);
+            alert('历史数据已重置');
         }
     }
 
     /**
-     * 更新图表
+     * 更新历史图表
+     */
+    function updateHistoryChart() {
+        const historyStats = modelLoader.getHistoricalSpeciesStatistics();
+
+        // 过滤掉计数为0的物种
+        const nonZeroIndices = historyStats.data.map((count, idx) => ({ count, idx }))
+            .filter(item => item.count > 0);
+
+        // 更新图表数据
+        historyChart.data.labels = nonZeroIndices.map(item => historyStats.labels[item.idx]);
+        historyChart.data.datasets[0].data = nonZeroIndices.map(item => item.count);
+
+        // 更新图表
+        historyChart.update();
+    }
+
+    /**
+     * 更新当前会话图表
      */
     function updateChart() {
         const stats = modelLoader.getSpeciesStatistics();
@@ -781,5 +692,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 更新图表
         chart.update();
+
+        // 同时更新历史图表
+        updateHistoryChart();
     }
 });

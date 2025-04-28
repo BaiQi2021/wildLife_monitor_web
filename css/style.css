@@ -203,9 +203,11 @@ button {
     color: var(--primary-color);
 }
 
+
+
 .audio-visual-canvas-container {
     width: 100%;
-    height: 120px; /* 增加高度 */
+    height: 180px;
     background-color: #fff;
     border-radius: 4px;
     overflow: hidden;
@@ -251,6 +253,28 @@ button {
 /* 图表容器 */
 .chart-container {
     height: 300px;
+}
+
+/* 图表控制按钮 */
+.chart-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* 危险按钮 */
+.danger-btn {
+    background-color: #dc3545;
+    color: white;
+}
+
+.danger-btn:hover {
+    background-color: #c82333;
+}
+
+.danger-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
 }
 
 /* 响应式设计 */

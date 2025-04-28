@@ -9,6 +9,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- 引入TensorFlow.js库 (指定版本) -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <!-- 引入FFT库 -->
+    <script src="https://cdn.jsdelivr.net/npm/fft.js@4.0.4/dist/fft.min.js"></script>
     <!-- 移除Speech Commands库，使用自定义音频处理 -->
 </head>
 <body>
@@ -56,12 +58,7 @@
                                 <canvas id="waveformCanvas"></canvas>
                             </div>
                         </div>
-                        <div class="audio-visual-section">
-                            <h3>频谱图</h3>
-                            <div class="audio-visual-canvas-container">
-                                <canvas id="spectrogramCanvas"></canvas>
-                            </div>
-                        </div>
+
                     </div>
                 </div>
                 <div class="audio-player" id="audioPlayerContainer" style="display: none;">
@@ -71,9 +68,20 @@
             </div>
 
             <div class="card">
-                <h2>数据统计</h2>
+                <h2>当前数据统计</h2>
                 <div class="chart-container">
                     <canvas id="speciesChart"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>历史数据统计</h2>
+                <div class="chart-controls">
+                    <button id="viewHistoryBtn" class="secondary-btn">查看历史数据</button>
+                    <button id="resetHistoryBtn" class="danger-btn">重置历史数据</button>
+                </div>
+                <div class="chart-container">
+                    <canvas id="historyChart"></canvas>
                 </div>
             </div>
         </section>
