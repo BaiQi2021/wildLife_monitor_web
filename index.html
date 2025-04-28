@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>野生动物音频识别系统</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- 引入图表库 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 引入TensorFlow.js库 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <!-- 移除Speech Commands库，使用自定义音频处理 -->
+</head>
+<body>
+    <header>
+        <h1>野生动物音频识别系统</h1>
+    </header>
+
+    <main>
+        <section class="container">
+            <div class="card">
+                <h2>实时音频监测</h2>
+                <div class="control-panel">
+                    <button id="startMonitoring" class="primary-btn">开始监测</button>
+                    <button id="stopMonitoring" class="secondary-btn" disabled>停止监测</button>
+                </div>
+                <div id="realTimeStatus" class="status">状态: 未开始监测</div>
+                <div class="audio-visualizer">
+                    <canvas id="audioVisualizer"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>音频上传与识别</h2>
+                <div class="upload-area">
+                    <input type="file" id="audioFileInput" accept="audio/*" class="file-input">
+                    <label for="audioFileInput" class="file-label">选择音频文件</label>
+                    <div id="fileInfo" class="file-info">未选择文件</div>
+                </div>
+                <div class="control-panel">
+                    <button id="uploadAudio" class="primary-btn" disabled>上传并分析</button>
+                </div>
+                <div id="uploadStatus" class="status">状态: 待上传</div>
+            </div>
+
+            <div class="card result-card">
+                <h2>识别结果</h2>
+                <div id="resultPanel" class="result-panel">
+                    <div class="no-result">请开始监测或上传音频文件</div>
+                </div>
+                <div class="audio-player" id="audioPlayerContainer" style="display: none;">
+                    <h3>检测到的音频</h3>
+                    <audio id="audioPlayer" controls></audio>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>数据统计</h2>
+                <div class="chart-container">
+                    <canvas id="speciesChart"></canvas>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>野生动物音频识别系统 &copy; 2024</p>
+    </footer>
+
+    <!-- 引入阿里云OSS SDK -->
+    <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
+    <!-- 引入自定义JS -->
+    <script src="js/audio-processor.js"></script>
+    <script src="js/model-loader.js"></script>
+    <script src="js/visualizer.js"></script>
+    <script src="js/oss-client.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html> 

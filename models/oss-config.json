@@ -1,0 +1,10 @@
+{
+    "region": "oss-cn-chengdu",
+    "accessKeyId": "LTAI5tAjwJSyU1mRnx7gxbQg",
+    "accessKeySecret": "D7dXD5ZOrKicEUXZXsXS85K0VJCo5u",
+    "bucket": "animal-audio-bucket",
+    "endpoint": "oss-cn-chengdu.aliyuncs.com",
+    "cors": true,
+    "secure": true,
+    "useFetch": true
+} 
