@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>野生动物音频识别系统</title>
     <link rel="stylesheet" href="css/style.css">
-    <!-- 引入图表库 -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- 引入TensorFlow.js库 -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <!-- 引入图表库 (指定版本) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- 引入TensorFlow.js库 (指定版本) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
     <!-- 移除Speech Commands库，使用自定义音频处理 -->
 </head>
 <body>
@@ -45,8 +45,24 @@
 
             <div class="card result-card">
                 <h2>识别结果</h2>
-                <div id="resultPanel" class="result-panel">
-                    <div class="no-result">请开始监测或上传音频文件</div>
+                <div class="result-container">
+                    <div id="resultPanel" class="result-panel">
+                        <div class="no-result">请开始监测或上传音频文件</div>
+                    </div>
+                    <div id="audioVisualsContainer" class="audio-visuals-container" style="display: none;">
+                        <div class="audio-visual-section">
+                            <h3>声音波形</h3>
+                            <div class="audio-visual-canvas-container">
+                                <canvas id="waveformCanvas"></canvas>
+                            </div>
+                        </div>
+                        <div class="audio-visual-section">
+                            <h3>频谱图</h3>
+                            <div class="audio-visual-canvas-container">
+                                <canvas id="spectrogramCanvas"></canvas>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="audio-player" id="audioPlayerContainer" style="display: none;">
                     <h3>检测到的音频</h3>
@@ -64,7 +80,7 @@
     </main>
 
     <footer>
-        <p>野生动物音频识别系统 &copy; 2024</p>
+        <p>野生动物音频识别系统@BaiQi</p>
     </footer>
 
     <!-- 引入阿里云OSS SDK -->
@@ -76,4 +92,4 @@
     <script src="js/oss-client.js"></script>
     <script src="js/main.js"></script>
 </body>
-</html> 
+</html>
