@@ -213,6 +213,7 @@ class ModelLoader {
             const n_fft = 2048;
             const hop_length = 512;
             const n_mels = this.inputShape[0]; // 通常为128
+            const targetTimeSteps = this.inputShape[1]; // 通常为94
 
             // 1. 创建临时音频上下文
             const audioContext = new AudioContext({sampleRate});
@@ -348,7 +349,6 @@ class ModelLoader {
             }
 
             // 7. 调整大小以匹配模型输入形状
-            const targetTimeSteps = this.inputShape[1]; // 通常为94
             const resizedMelSpec = new Array(n_mels);
 
             for (let i = 0; i < n_mels; i++) {
