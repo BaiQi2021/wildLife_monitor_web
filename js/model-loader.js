@@ -116,7 +116,7 @@ class ModelLoader {
                 this.model.summary();
 
                 // 预热模型 - 进行一次推理以确保模型已完全加载
-                const dummyInput = tf.zeros([1, ...this.inputShape, 1]);
+                const dummyInput = tf.zeros([1, ...this.inputShape]);
                 const warmupResult = this.model.predict(dummyInput);
                 warmupResult.dispose(); // 释放资源
                 dummyInput.dispose(); // 释放资源
@@ -209,7 +209,7 @@ class ModelLoader {
      * 提取音频特征 - 梅尔频谱图
      * @param {Float32Array} audioData - 音频数据
      * @param {number} sampleRate - 采样率
-     * @returns {tf.Tensor} - 音频特征张量，形状为 [1, inputShape[0], inputShape[1], 1]
+     * @returns {tf.Tensor} - 音频特征张量，形状为 [1, inputShape[0], inputShape[1]]
      */
     async extractFeatures(audioData, sampleRate) {
         try {
@@ -369,8 +369,9 @@ class ModelLoader {
                 }
             }
 
-            // 创建张量并重塑为所需形状 [1, n_mels, targetTimeSteps, 1]
-            const tensor = tf.tensor(flattenedData).reshape([1, n_mels, targetTimeSteps, 1]);
+            // 创建张量并重塑为所需形状 [1, n_mels, targetTimeSteps]
+            // 注意：模型期望的输入形状是 [batch, height, width]，不包含通道维度
+            const tensor = tf.tensor(flattenedData).reshape([1, n_mels, targetTimeSteps]);
 
             // 清理资源
             source.disconnect();
