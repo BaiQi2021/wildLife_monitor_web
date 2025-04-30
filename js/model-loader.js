@@ -149,16 +149,47 @@ class ModelLoader {
 
         try {
             console.log('开始预测...');
+            console.log('音频数据长度:', audioData.length);
+            console.log('采样率:', sampleRate);
+
+            // 记录音频数据的一些统计信息
+            const audioMin = Math.min(...audioData);
+            const audioMax = Math.max(...audioData);
+            const audioMean = audioData.reduce((sum, val) => sum + val, 0) / audioData.length;
+            console.log('音频数据统计: 最小值=', audioMin, '最大值=', audioMax, '平均值=', audioMean);
 
             // 1. 提取音频特征
             const featureTensor = await this.extractFeatures(audioData, sampleRate);
+
+            // 记录特征张量的一些统计信息
+            const featureData = await featureTensor.data();
+            const featureMin = Math.min(...featureData);
+            const featureMax = Math.max(...featureData);
+            const featureMean = featureData.reduce((sum, val) => sum + val, 0) / featureData.length;
+            console.log('特征统计: 最小值=', featureMin, '最大值=', featureMax, '平均值=', featureMean);
 
             // 2. 使用模型进行推理
             console.log('执行模型推理...');
             const predictionTensor = this.model.predict(featureTensor);
 
+            // 记录原始预测结果
+            const rawPredictions = await predictionTensor.data();
+            console.log('原始预测结果:', Array.from(rawPredictions));
+
+            // 检查原始预测结果是否已经是概率分布
+            const rawSum = rawPredictions.reduce((sum, val) => sum + val, 0);
+            console.log('原始预测和:', rawSum);
+
+            // 应用softmax激活函数以确保预测结果是概率分布
+            // 这是一个关键修复，确保预测结果的和为1
+            const softmaxPredictions = tf.softmax(predictionTensor);
+
             // 3. 将预测结果转换为JavaScript数组
-            const predictions = await predictionTensor.data();
+            const predictions = await softmaxPredictions.data();
+
+            // 检查softmax后的预测结果
+            const softmaxSum = predictions.reduce((sum, val) => sum + val, 0);
+            console.log('Softmax后预测和:', softmaxSum);
 
             // 4. 找出最高概率的类别
             let maxIndex = 0;
@@ -188,6 +219,7 @@ class ModelLoader {
             // 8. 清理TensorFlow资源
             featureTensor.dispose();
             predictionTensor.dispose();
+            softmaxPredictions.dispose();
 
             console.log('预测完成:', result);
 
@@ -208,12 +240,15 @@ class ModelLoader {
     async extractFeatures(audioData, sampleRate) {
         try {
             console.log('开始提取音频特征...');
+            console.log('输入形状:', this.inputShape);
 
             // 参数设置 - 与Python端保持一致
             const n_fft = 2048;
             const hop_length = 512;
             const n_mels = this.inputShape[0]; // 通常为128
             const targetTimeSteps = this.inputShape[1]; // 通常为94
+
+            console.log('参数设置: n_fft=', n_fft, 'hop_length=', hop_length, 'n_mels=', n_mels, 'targetTimeSteps=', targetTimeSteps);
 
             // 1. 创建临时音频上下文
             const audioContext = new AudioContext({sampleRate});
@@ -236,6 +271,7 @@ class ModelLoader {
 
             // 创建一个足够大的数组来存储所有帧的频域数据
             const numFrames = Math.floor((audioData.length - n_fft) / hop_length) + 1;
+            console.log('帧数:', numFrames);
             const melSpectrogram = new Array(numFrames);
 
             // 模拟滑动窗口处理
@@ -338,6 +374,8 @@ class ModelLoader {
                     maxVal = Math.max(maxVal, transposedMelSpec[i][j]);
                 }
             }
+
+            console.log('梅尔频谱图统计: 最小值=', minVal, '最大值=', maxVal);
 
             // 标准化
             const normalizedMelSpec = new Array(n_mels);
