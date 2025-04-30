@@ -78,7 +78,38 @@ class ModelLoader {
             // 2. 加载TensorFlow.js模型
             try {
                 console.log('加载TensorFlow.js模型:', this.modelPath);
-                this.model = await tf.loadLayersModel(this.modelPath);
+
+                // 由于模型.json文件中的输入层定义可能有问题，我们使用自定义方法创建模型
+                try {
+                    // 首先尝试直接加载模型
+                    this.model = await tf.loadLayersModel(this.modelPath);
+                } catch (directLoadError) {
+                    console.warn('直接加载模型失败，尝试使用自定义方法:', directLoadError);
+
+                    // 获取模型JSON
+                    const modelResponse = await fetch(this.modelPath);
+                    const modelJSON = await modelResponse.json();
+
+                    // 修复输入层定义
+                    if (modelJSON.modelTopology &&
+                        modelJSON.modelTopology.config &&
+                        modelJSON.modelTopology.config.layers &&
+                        modelJSON.modelTopology.config.layers.length > 0) {
+
+                        const inputLayer = modelJSON.modelTopology.config.layers[0];
+                        if (inputLayer.class_name === 'InputLayer' && inputLayer.config.batch_shape) {
+                            // 添加inputShape属性
+                            inputLayer.config.inputShape = inputLayer.config.batch_shape.slice(1);
+                            console.log('已修复输入层定义:', inputLayer.config);
+                        }
+                    }
+
+                    // 使用修复后的JSON加载模型
+                    this.model = await tf.loadLayersModel(
+                        tf.io.fromMemory(modelJSON)
+                    );
+                }
+
                 console.log('模型加载成功:', this.model);
 
                 // 输出模型摘要
@@ -174,7 +205,7 @@ class ModelLoader {
         }
     }
 
-    /*
+    /**
      * 提取音频特征 - 梅尔频谱图
      * @param {Float32Array} audioData - 音频数据
      * @param {number} sampleRate - 采样率
