@@ -253,28 +253,43 @@ class ModelLoader {
                 // 提取当前帧的音频数据
                 const frameData = audioData.slice(startSample, startSample + n_fft);
 
-                // 使用FFT计算频谱
-                const fft = new FFT(n_fft);
-                const fftInput = new Array(n_fft).fill(0);
+                // 使用Web Audio API的AnalyserNode代替FFT.js
+                // 创建一个临时的离线音频上下文
+                const offlineCtx = new OfflineAudioContext(1, n_fft, sampleRate);
+
+                // 创建一个缓冲区
+                const buffer = offlineCtx.createBuffer(1, frameData.length, sampleRate);
+                const channelData = buffer.getChannelData(0);
+
+                // 复制数据到缓冲区
                 for (let j = 0; j < frameData.length; j++) {
-                    fftInput[j] = frameData[j];
+                    // 应用窗函数（汉宁窗）
+                    channelData[j] = frameData[j] * 0.5 * (1 - Math.cos(2 * Math.PI * j / (n_fft - 1)));
                 }
 
-                // 应用窗函数（汉宁窗）
-                for (let j = 0; j < n_fft; j++) {
-                    fftInput[j] *= 0.5 * (1 - Math.cos(2 * Math.PI * j / (n_fft - 1)));
-                }
+                // 创建分析器
+                const analyser = offlineCtx.createAnalyser();
+                analyser.fftSize = n_fft;
 
-                // 计算FFT
-                const fftOutput = fft.createComplexArray();
-                fft.realTransform(fftOutput, fftInput);
+                // 创建源并连接
+                const source = offlineCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(analyser);
+                analyser.connect(offlineCtx.destination);
 
-                // 计算功率谱
-                const powerSpectrum = new Array(n_fft / 2);
-                for (let j = 0; j < n_fft / 2; j++) {
-                    const real = fftOutput[2 * j];
-                    const imag = fftOutput[2 * j + 1];
-                    powerSpectrum[j] = (real * real + imag * imag) / n_fft;
+                // 启动源并渲染
+                source.start(0);
+                await offlineCtx.startRendering();
+
+                // 获取频域数据
+                const fftOutput = new Float32Array(analyser.frequencyBinCount);
+                analyser.getFloatFrequencyData(fftOutput);
+
+                // 计算功率谱 - 从分析器获取的数据已经是分贝单位，需要转换回功率
+                const powerSpectrum = new Array(fftOutput.length);
+                for (let j = 0; j < fftOutput.length; j++) {
+                    // 将分贝转换回功率值: 10^(dB/10)
+                    powerSpectrum[j] = Math.pow(10, fftOutput[j] / 10);
                 }
 
                 // 简化的梅尔滤波器组应用
