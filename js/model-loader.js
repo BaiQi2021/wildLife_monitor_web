@@ -174,7 +174,7 @@ class ModelLoader {
         }
     }
 
-    /**
+    /*
      * 提取音频特征 - 梅尔频谱图
      * @param {Float32Array} audioData - 音频数据
      * @param {number} sampleRate - 采样率
