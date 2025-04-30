@@ -30,7 +30,7 @@
     94
   ],
   "outputShape": [
-    24
+    25
   ],
   "modelName": "动物声音分类器",
   "modelDescription": "基于YAMNet特征的野生动物声音分类模型",

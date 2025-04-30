@@ -7,11 +7,7 @@ class ModelLoader {
         // 模型相关属性
         this.isModelLoaded = false;
         this.model = null; // TensorFlow.js 模型
-        this.classNames = [
-            'Bear', 'Cattle', 'Dog', 'Elephants', 'Lion',
-            'Rooster', 'Sheep', 'Wolf', 'Background', 'Human',
-            'Fox', 'Owl', 'Snake', 'Frog'
-        ]; // 类别名称
+        this.classNames = []; // 类别名称将从元数据中加载
 
         // 模型路径
         this.modelPath = 'models/animal_classifier_model/model.json';
@@ -25,18 +21,9 @@ class ModelLoader {
 
         // 用于统计各类别的识别次数（当前会话）
         this.speciesCount = {};
-        this.classNames.forEach(className => {
-            this.speciesCount[className] = 0;
-        });
 
         // 用于存储历史数据（持久化）
         this.historicalSpeciesCount = {};
-        this.classNames.forEach(className => {
-            this.historicalSpeciesCount[className] = 0;
-        });
-
-        // 从本地存储加载历史数据
-        this.loadHistoricalData();
     }
 
     /**
@@ -58,11 +45,18 @@ class ModelLoader {
                     // 更新类别名称
                     if (metadata.classNames && Array.isArray(metadata.classNames)) {
                         this.classNames = metadata.classNames;
-                        // 重置物种计数
+
+                        // 初始化物种计数
                         this.speciesCount = {};
+                        this.historicalSpeciesCount = {};
+
                         this.classNames.forEach(className => {
                             this.speciesCount[className] = 0;
+                            this.historicalSpeciesCount[className] = 0;
                         });
+
+                        // 从本地存储加载历史数据
+                        this.loadHistoricalData();
                     }
 
                     // 更新输入形状
@@ -128,7 +122,7 @@ class ModelLoader {
             }
 
             // 3. 初始化音频处理功能
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.audioContext = new AudioContext();
 
             // 模型已加载成功
             this.isModelLoaded = true;
@@ -221,7 +215,7 @@ class ModelLoader {
             const n_mels = this.inputShape[0]; // 通常为128
 
             // 1. 创建临时音频上下文
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)({sampleRate});
+            const audioContext = new AudioContext({sampleRate});
 
             // 2. 创建音频缓冲区
             const audioBuffer = audioContext.createBuffer(1, audioData.length, sampleRate);
@@ -238,8 +232,6 @@ class ModelLoader {
 
             // 4. 计算梅尔频谱图
             // 由于Web Audio API没有直接的梅尔频谱图计算，我们需要手动实现
-            // 首先获取频域数据
-            const frequencyData = new Float32Array(analyser.frequencyBinCount);
 
             // 创建一个足够大的数组来存储所有帧的频域数据
             const numFrames = Math.floor((audioData.length - n_fft) / hop_length) + 1;
@@ -437,14 +429,22 @@ class ModelLoader {
             if (savedData) {
                 const parsedData = JSON.parse(savedData);
 
-                // 确保所有类别都存在
+                // 创建一个新的历史数据对象，只包含当前类别
+                const newHistoricalData = {};
+
+                // 初始化所有当前类别为0
                 this.classNames.forEach(className => {
-                    if (typeof parsedData[className] === 'undefined') {
-                        parsedData[className] = 0;
+                    newHistoricalData[className] = 0;
+                });
+
+                // 从保存的数据中复制匹配的类别数据
+                this.classNames.forEach(className => {
+                    if (typeof parsedData[className] !== 'undefined') {
+                        newHistoricalData[className] = parsedData[className];
                     }
                 });
 
-                this.historicalSpeciesCount = parsedData;
+                this.historicalSpeciesCount = newHistoricalData;
                 console.log('已加载历史数据:', this.historicalSpeciesCount);
             }
         } catch (error) {
@@ -494,6 +494,11 @@ class ModelLoader {
      */
     resetStatistics() {
         this.recognitionHistory = [];
+
+        // 重新初始化物种计数对象，确保只包含当前类别
+        this.speciesCount = {};
+
+        // 初始化所有当前类别为0
         this.classNames.forEach(className => {
             this.speciesCount[className] = 0;
         });
@@ -503,6 +508,10 @@ class ModelLoader {
      * 重置历史统计数据
      */
     resetHistoricalStatistics() {
+        // 重新初始化历史数据对象，确保只包含当前类别
+        this.historicalSpeciesCount = {};
+
+        // 初始化所有当前类别为0
         this.classNames.forEach(className => {
             this.historicalSpeciesCount[className] = 0;
         });
