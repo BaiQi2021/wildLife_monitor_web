@@ -6,14 +6,19 @@ class ModelLoader {
     constructor() {
         // 模型相关属性
         this.isModelLoaded = false;
+        this.model = null; // TensorFlow.js 模型
         this.classNames = [
             'Bear', 'Cattle', 'Dog', 'Elephants', 'Lion',
             'Rooster', 'Sheep', 'Wolf', 'Background', 'Human',
             'Fox', 'Owl', 'Snake', 'Frog'
         ]; // 类别名称
 
-        // 模型元数据路径
+        // 模型路径
+        this.modelPath = 'models/animal_classifier_model/model.json';
         this.modelMetadataPath = 'models/animal_classifier_metadata.json';
+
+        // 模型输入形状
+        this.inputShape = [128, 94]; // 默认值，将从元数据中更新
 
         // 用于存储识别结果的历史记录
         this.recognitionHistory = [];
@@ -35,18 +40,22 @@ class ModelLoader {
     }
 
     /**
-     * 加载模型配置
+     * 加载模型配置和TensorFlow.js模型
      * @returns {Promise<boolean>} - 是否成功加载
      */
     async loadModel() {
         try {
-            console.log('正在加载配置...');
+            console.log('正在加载配置和模型...');
 
-            // 尝试加载元数据以获取类别名称
+            // 1. 首先加载元数据以获取类别名称和输入形状
             try {
+                console.log('加载元数据...');
                 const metadataResponse = await fetch(this.modelMetadataPath);
                 if (metadataResponse.ok) {
                     const metadata = await metadataResponse.json();
+                    console.log('元数据加载成功:', metadata);
+
+                    // 更新类别名称
                     if (metadata.classNames && Array.isArray(metadata.classNames)) {
                         this.classNames = metadata.classNames;
                         // 重置物种计数
@@ -55,21 +64,48 @@ class ModelLoader {
                             this.speciesCount[className] = 0;
                         });
                     }
+
+                    // 更新输入形状
+                    if (metadata.inputShape) {
+                        this.inputShape = metadata.inputShape;
+                        console.log('模型输入形状:', this.inputShape);
+                    }
                 }
             } catch (metadataError) {
-                console.warn('无法加载模型元数据，使用默认类别名称', metadataError);
+                console.warn('无法加载模型元数据，使用默认类别名称和输入形状', metadataError);
             }
 
-            // 初始化音频处理功能
+            // 2. 加载TensorFlow.js模型
+            try {
+                console.log('加载TensorFlow.js模型:', this.modelPath);
+                this.model = await tf.loadLayersModel(this.modelPath);
+                console.log('模型加载成功:', this.model);
+
+                // 输出模型摘要
+                this.model.summary();
+
+                // 预热模型 - 进行一次推理以确保模型已完全加载
+                const dummyInput = tf.zeros([1, ...this.inputShape, 1]);
+                const warmupResult = this.model.predict(dummyInput);
+                warmupResult.dispose(); // 释放资源
+                dummyInput.dispose(); // 释放资源
+
+                console.log('模型预热完成');
+            } catch (modelError) {
+                console.error('模型加载失败:', modelError);
+                throw new Error('无法加载TensorFlow.js模型: ' + modelError.message);
+            }
+
+            // 3. 初始化音频处理功能
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
             // 模型已加载成功
             this.isModelLoaded = true;
-            console.log('配置加载成功');
+            console.log('配置和模型加载成功');
 
             return true;
         } catch (error) {
-            console.error('配置加载失败:', error);
+            console.error('配置或模型加载失败:', error);
             this.isModelLoaded = false;
             return false;
         }
@@ -82,19 +118,53 @@ class ModelLoader {
      * @returns {Promise<Object>} - 预测结果
      */
     async predict(audioData, sampleRate) {
-        if (!this.isModelLoaded) {
+        if (!this.isModelLoaded || !this.model) {
             throw new Error('模型未加载');
         }
 
         try {
-            // 提取音频特征（简化版）
-            const features = await this.extractFeatures(audioData, sampleRate);
+            console.log('开始预测...');
 
-            // 在真实场景中，这里应该使用模型进行推理
-            // 由于缺少实际模型，我们使用一个基于音频特征的简单规则来模拟分类
+            // 1. 提取音频特征
+            const featureTensor = await this.extractFeatures(audioData, sampleRate);
 
-            // 基于音频特征进行简单分类
-            const result = this.classifyBasedOnFeatures(features);
+            // 2. 使用模型进行推理
+            console.log('执行模型推理...');
+            const predictionTensor = this.model.predict(featureTensor);
+
+            // 3. 将预测结果转换为JavaScript数组
+            const predictions = await predictionTensor.data();
+
+            // 4. 找出最高概率的类别
+            let maxIndex = 0;
+            let maxProbability = predictions[0];
+
+            for (let i = 1; i < predictions.length; i++) {
+                if (predictions[i] > maxProbability) {
+                    maxProbability = predictions[i];
+                    maxIndex = i;
+                }
+            }
+
+            // 5. 获取预测的类别
+            const predictedClass = this.classNames[maxIndex];
+
+            // 6. 创建结果对象
+            const result = {
+                class: predictedClass,
+                probability: maxProbability,
+                allProbabilities: Array.from(predictions),
+                timestamp: new Date()
+            };
+
+            // 7. 更新历史记录
+            this.updateRecognitionHistory(result);
+
+            // 8. 清理TensorFlow资源
+            featureTensor.dispose();
+            predictionTensor.dispose();
+
+            console.log('预测完成:', result);
 
             // 返回结果
             return result;
@@ -105,46 +175,179 @@ class ModelLoader {
     }
 
     /**
-     * 提取音频特征
+     * 提取音频特征 - 梅尔频谱图
      * @param {Float32Array} audioData - 音频数据
      * @param {number} sampleRate - 采样率
-     * @returns {Object} - 音频特征
+     * @returns {tf.Tensor} - 音频特征张量，形状为 [1, inputShape[0], inputShape[1], 1]
      */
     async extractFeatures(audioData, sampleRate) {
         try {
-            // 创建临时音频上下文
+            console.log('开始提取音频特征...');
+
+            // 参数设置 - 与Python端保持一致
+            const n_fft = 2048;
+            const hop_length = 512;
+            const n_mels = this.inputShape[0]; // 通常为128
+
+            // 1. 创建临时音频上下文
             const audioContext = new (window.AudioContext || window.webkitAudioContext)({sampleRate});
 
-            // 创建音频缓冲区
+            // 2. 创建音频缓冲区
             const audioBuffer = audioContext.createBuffer(1, audioData.length, sampleRate);
             audioBuffer.getChannelData(0).set(audioData);
 
-            // 创建音频源
+            // 3. 使用Web Audio API的分析器获取频域数据
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = n_fft;
+
+            // 创建音频源并连接分析器
             const source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
-
-            // 创建分析器节点
-            const analyser = audioContext.createAnalyser();
-            analyser.fftSize = 2048;
             source.connect(analyser);
 
-            // 获取频域数据
-            const bufferLength = analyser.frequencyBinCount;
-            const frequencyData = new Float32Array(bufferLength);
-            analyser.getFloatFrequencyData(frequencyData);
+            // 4. 计算梅尔频谱图
+            // 由于Web Audio API没有直接的梅尔频谱图计算，我们需要手动实现
+            // 首先获取频域数据
+            const frequencyData = new Float32Array(analyser.frequencyBinCount);
 
-            // 创建时域数据
-            const timeData = new Float32Array(analyser.fftSize);
-            analyser.getFloatTimeDomainData(timeData);
+            // 创建一个足够大的数组来存储所有帧的频域数据
+            const numFrames = Math.floor((audioData.length - n_fft) / hop_length) + 1;
+            const melSpectrogram = new Array(numFrames);
 
-            // 计算基本统计特征
-            const features = this.computeAudioFeatures(frequencyData, timeData, audioData);
+            // 模拟滑动窗口处理
+            for (let i = 0; i < numFrames; i++) {
+                // 计算当前帧的起始位置
+                const startSample = i * hop_length;
+
+                // 提取当前帧的音频数据
+                const frameData = audioData.slice(startSample, startSample + n_fft);
+
+                // 使用FFT计算频谱
+                const fft = new FFT(n_fft);
+                const fftInput = new Array(n_fft).fill(0);
+                for (let j = 0; j < frameData.length; j++) {
+                    fftInput[j] = frameData[j];
+                }
+
+                // 应用窗函数（汉宁窗）
+                for (let j = 0; j < n_fft; j++) {
+                    fftInput[j] *= 0.5 * (1 - Math.cos(2 * Math.PI * j / (n_fft - 1)));
+                }
+
+                // 计算FFT
+                const fftOutput = fft.createComplexArray();
+                fft.realTransform(fftOutput, fftInput);
+
+                // 计算功率谱
+                const powerSpectrum = new Array(n_fft / 2);
+                for (let j = 0; j < n_fft / 2; j++) {
+                    const real = fftOutput[2 * j];
+                    const imag = fftOutput[2 * j + 1];
+                    powerSpectrum[j] = (real * real + imag * imag) / n_fft;
+                }
+
+                // 简化的梅尔滤波器组应用
+                // 这里我们使用一个简化的方法来模拟梅尔滤波器组
+                const melFrame = new Array(n_mels).fill(0);
+                const fftBins = n_fft / 2;
+
+                // 简化的梅尔滤波器应用
+                for (let mel_i = 0; mel_i < n_mels; mel_i++) {
+                    // 计算当前梅尔滤波器的频率范围
+                    const mel_start = mel_i * (fftBins / n_mels);
+                    const mel_end = (mel_i + 1) * (fftBins / n_mels);
+
+                    // 应用梅尔滤波器
+                    let sum = 0;
+                    let count = 0;
+                    for (let bin = Math.floor(mel_start); bin < Math.floor(mel_end); bin++) {
+                        if (bin < powerSpectrum.length) {
+                            sum += powerSpectrum[bin];
+                            count++;
+                        }
+                    }
+
+                    // 计算平均值
+                    melFrame[mel_i] = count > 0 ? sum / count : 0;
+                }
+
+                // 转换为分贝单位
+                for (let j = 0; j < n_mels; j++) {
+                    melFrame[j] = 10 * Math.log10(Math.max(1e-10, melFrame[j]));
+                }
+
+                melSpectrogram[i] = melFrame;
+            }
+
+            // 5. 转置梅尔频谱图以匹配模型输入格式 [n_mels, time]
+            const transposedMelSpec = new Array(n_mels);
+            for (let i = 0; i < n_mels; i++) {
+                transposedMelSpec[i] = new Array(melSpectrogram.length);
+                for (let j = 0; j < melSpectrogram.length; j++) {
+                    transposedMelSpec[i][j] = melSpectrogram[j][i];
+                }
+            }
+
+            // 6. 标准化到 [0, 1] 范围
+            // 找出最大值和最小值
+            let minVal = Infinity;
+            let maxVal = -Infinity;
+
+            for (let i = 0; i < n_mels; i++) {
+                for (let j = 0; j < transposedMelSpec[i].length; j++) {
+                    minVal = Math.min(minVal, transposedMelSpec[i][j]);
+                    maxVal = Math.max(maxVal, transposedMelSpec[i][j]);
+                }
+            }
+
+            // 标准化
+            const normalizedMelSpec = new Array(n_mels);
+            for (let i = 0; i < n_mels; i++) {
+                normalizedMelSpec[i] = new Array(transposedMelSpec[i].length);
+                for (let j = 0; j < transposedMelSpec[i].length; j++) {
+                    normalizedMelSpec[i][j] = (transposedMelSpec[i][j] - minVal) / (maxVal - minVal);
+                }
+            }
+
+            // 7. 调整大小以匹配模型输入形状
+            const targetTimeSteps = this.inputShape[1]; // 通常为94
+            const resizedMelSpec = new Array(n_mels);
+
+            for (let i = 0; i < n_mels; i++) {
+                resizedMelSpec[i] = new Array(targetTimeSteps);
+
+                // 简单的线性插值
+                const srcLength = normalizedMelSpec[i].length;
+                for (let j = 0; j < targetTimeSteps; j++) {
+                    const srcIdx = j * (srcLength - 1) / (targetTimeSteps - 1);
+                    const srcIdxFloor = Math.floor(srcIdx);
+                    const srcIdxCeil = Math.min(srcIdxFloor + 1, srcLength - 1);
+                    const alpha = srcIdx - srcIdxFloor;
+
+                    resizedMelSpec[i][j] = (1 - alpha) * normalizedMelSpec[i][srcIdxFloor] +
+                                          alpha * normalizedMelSpec[i][srcIdxCeil];
+                }
+            }
+
+            // 8. 转换为TensorFlow.js张量
+            // 首先将二维数组展平为一维
+            const flattenedData = [];
+            for (let i = 0; i < n_mels; i++) {
+                for (let j = 0; j < targetTimeSteps; j++) {
+                    flattenedData.push(resizedMelSpec[i][j]);
+                }
+            }
+
+            // 创建张量并重塑为所需形状 [1, n_mels, targetTimeSteps, 1]
+            const tensor = tf.tensor(flattenedData).reshape([1, n_mels, targetTimeSteps, 1]);
 
             // 清理资源
             source.disconnect();
             await audioContext.close();
 
-            return features;
+            console.log('特征提取完成，形状:', tensor.shape);
+
+            return tensor;
         } catch (error) {
             console.error('特征提取失败:', error);
             throw error;
@@ -152,133 +355,8 @@ class ModelLoader {
     }
 
     /**
-     * 计算音频特征
-     * @param {Float32Array} frequencyData - 频域数据
-     * @param {Float32Array} timeData - 时域数据
-     * @param {Float32Array} rawAudioData - 原始音频数据
-     * @returns {Object} - 计算得到的特征
+     * 在dispose方法中添加模型资源释放
      */
-    computeAudioFeatures(frequencyData, timeData, rawAudioData) {
-        // 避免-Infinity值
-        const processedFreqData = Array.from(frequencyData).map(v => isFinite(v) ? v : -100);
-
-        // 计算频域特征
-        const freqMean = processedFreqData.reduce((sum, val) => sum + val, 0) / processedFreqData.length;
-        const freqStd = Math.sqrt(
-            processedFreqData.reduce((sum, val) => sum + Math.pow(val - freqMean, 2), 0) / processedFreqData.length
-        );
-
-        // 找出主要频率
-        let dominantFreqIndex = 0;
-        let maxFreqValue = processedFreqData[0];
-        for (let i = 1; i < processedFreqData.length; i++) {
-            if (processedFreqData[i] > maxFreqValue) {
-                maxFreqValue = processedFreqData[i];
-                dominantFreqIndex = i;
-            }
-        }
-
-        // 计算时域特征
-        const timeMean = timeData.reduce((sum, val) => sum + val, 0) / timeData.length;
-        const timeStd = Math.sqrt(
-            timeData.reduce((sum, val) => sum + Math.pow(val - timeMean, 2), 0) / timeData.length
-        );
-
-        // 计算原始音频数据的统计量
-        const rawMean = rawAudioData.reduce((sum, val) => sum + val, 0) / rawAudioData.length;
-        const rawMax = Math.max(...rawAudioData);
-        const rawMin = Math.min(...rawAudioData);
-        const rawRange = rawMax - rawMin;
-
-        // 提取过零率 (Zero Crossing Rate)
-        let zeroCrossings = 0;
-        for (let i = 1; i < rawAudioData.length; i++) {
-            if ((rawAudioData[i] >= 0 && rawAudioData[i-1] < 0) ||
-                (rawAudioData[i] < 0 && rawAudioData[i-1] >= 0)) {
-                zeroCrossings++;
-            }
-        }
-        const zeroCrossingRate = zeroCrossings / rawAudioData.length;
-
-        // 返回计算的特征
-        return {
-            freqMean,
-            freqStd,
-            dominantFreqIndex,
-            maxFreqValue,
-            timeMean,
-            timeStd,
-            rawMean,
-            rawMax,
-            rawMin,
-            rawRange,
-            zeroCrossingRate
-        };
-    }
-
-    /**
-     * 基于提取的特征进行分类
-     * @param {Object} features - 音频特征
-     * @returns {Object} - 分类结果
-     */
-    classifyBasedOnFeatures(features) {
-        // 这里实现一个简单的规则分类器
-        // 在真实应用中，这里应该是神经网络或其他机器学习模型的推理
-
-        // 创建随机但针对特征加权的分数
-        const scores = this.classNames.map(() => Math.random());
-
-        // 根据各种特征调整概率
-        for (let i = 0; i < this.classNames.length; i++) {
-            const className = this.classNames[i];
-
-            // 模拟不同动物声音的特征规则
-            // 这里只是演示，不代表真实动物声音的特征分布
-            if (className === 'Bear' && features.freqMean < -50) {
-                scores[i] *= 1.5;
-            } else if (className === 'Dog' && features.zeroCrossingRate > 0.2) {
-                scores[i] *= 1.4;
-            } else if (className === 'Bird' && features.dominantFreqIndex > 100) {
-                scores[i] *= 1.3;
-            } else if (className === 'Wolf' && features.rawRange > 1.5) {
-                scores[i] *= 1.2;
-            }
-
-            // 随机加权确保每次结果有一定变化
-            scores[i] *= (0.8 + Math.random() * 0.4);
-        }
-
-        // 标准化概率
-        const sum = scores.reduce((a, b) => a + b, 0);
-        const normalizedScores = scores.map(s => s / sum);
-
-        // 找出最高概率的类别
-        let maxIndex = 0;
-        let maxProbability = normalizedScores[0];
-
-        for (let i = 1; i < normalizedScores.length; i++) {
-            if (normalizedScores[i] > maxProbability) {
-                maxProbability = normalizedScores[i];
-                maxIndex = i;
-            }
-        }
-
-        // 获取预测的类别
-        const predictedClass = this.classNames[maxIndex];
-
-        // 创建结果对象
-        const result = {
-            class: predictedClass,
-            probability: maxProbability,
-            allProbabilities: normalizedScores,
-            timestamp: new Date()
-        };
-
-        // 更新历史记录
-        this.updateRecognitionHistory(result);
-
-        return result;
-    }
 
     /**
      * 更新识别历史记录
@@ -395,8 +473,23 @@ class ModelLoader {
      * 释放资源
      */
     dispose() {
+        // 释放音频上下文
         if (this.audioContext) {
             this.audioContext.close().catch(console.error);
         }
+
+        // 释放TensorFlow.js模型资源
+        if (this.model) {
+            try {
+                this.model.dispose();
+                console.log('模型资源已释放');
+            } catch (error) {
+                console.error('释放模型资源时出错:', error);
+            }
+        }
+
+        // 清除其他资源
+        this.isModelLoaded = false;
+        this.model = null;
     }
 }
